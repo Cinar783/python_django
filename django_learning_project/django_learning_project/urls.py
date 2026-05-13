@@ -19,5 +19,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('first_app/',include("first_app.urls")),
+    path('maze/', include("maze_game.urls")),
     path('admin/', admin.site.urls),
     ]
