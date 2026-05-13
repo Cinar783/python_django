@@ -271,23 +271,37 @@
             ctx.fill();
         }
 
+        function isWall(x, y) {
+            return y < 0 || y >= maze.length || x < 0 || x >= maze[0].length || maze[y][x] === "#";
+        }
+
         function tryMove(dx, dy) {
             if (won) return;
-            const nx = player.x + dx;
-            const ny = player.y + dy;
-            if (ny < 0 || ny >= maze.length || nx < 0 || nx >= maze[0].length) return;
-            if (maze[ny][nx] === "#") return;
-            player.x = nx;
-            player.y = ny;
-            moves++;
-            movesEl.textContent = moves;
-            if (player.x === goal.x && player.y === goal.y) {
-                won = true;
-                const secs = Math.floor((Date.now() - startTime) / 1000);
-                messageEl.textContent = `🎉 Kazandın! ${moves} hamle, ${secs} saniye.`;
-                clearInterval(timerInterval);
+            let moved = false;
+            while (true) {
+                const nx = player.x + dx;
+                const ny = player.y + dy;
+                if (isWall(nx, ny)) break;
+                player.x = nx;
+                player.y = ny;
+                moves++;
+                moved = true;
+                if (player.x === goal.x && player.y === goal.y) {
+                    won = true;
+                    const secs = Math.floor((Date.now() - startTime) / 1000);
+                    messageEl.textContent = `🎉 Kazandın! ${moves} hamle, ${secs} saniye.`;
+                    clearInterval(timerInterval);
+                    break;
+                }
+                // Yan taraflarda açıklık varsa kavşaktayız — dur.
+                const side1Open = !isWall(player.x + (-dy), player.y + dx);
+                const side2Open = !isWall(player.x + dy, player.y + (-dx));
+                if (side1Open || side2Open) break;
             }
-            draw();
+            if (moved) {
+                movesEl.textContent = moves;
+                draw();
+            }
         }
 
         document.addEventListener("keydown", e => {
