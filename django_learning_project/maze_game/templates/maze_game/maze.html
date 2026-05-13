@@ -72,7 +72,7 @@
 <body>
     <h1>🎮 2D Labirent Oyunu</h1>
     <div class="info">
-        Ok tuşları veya WASD ile hareket et. Sarı kareyi (🏁) bul!
+        Ok tuşları veya WASD ile hareket et. Hedefe 🏁 ulaş, canavarlardan 👻 kaç!
     </div>
     <div class="hud">
         Seviye: <span id="level">1</span> /
@@ -103,20 +103,26 @@
         let maze = [];
         let player = { x: 0, y: 0 };
         let goal = { x: 0, y: 0 };
+        let monsters = [];
         let cellSize = 30;
         let moves = 0;
         let startTime = Date.now();
         let won = false;
+        let lost = false;
         let timerInterval = null;
+        let monsterInterval = null;
 
         function loadLevel(idx) {
             won = false;
+            lost = false;
             messageEl.textContent = "";
+            messageEl.style.color = "#06d6a0";
             moves = 0;
             startTime = Date.now();
             movesEl.textContent = moves;
             timeEl.textContent = 0;
             levelEl.textContent = idx + 1;
+            monsters = [];
 
             const raw = rawLevels[idx];
             maze = raw.map(row => row.split(""));
@@ -128,6 +134,9 @@
                         maze[y][x] = ".";
                     } else if (maze[y][x] === "G") {
                         goal = { x, y };
+                    } else if (maze[y][x] === "M") {
+                        monsters.push({ x, y, dx: 0, dy: 0 });
+                        maze[y][x] = ".";
                     }
                 }
             }
@@ -141,10 +150,12 @@
             draw();
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
-                if (!won) {
+                if (!won && !lost) {
                     timeEl.textContent = Math.floor((Date.now() - startTime) / 1000);
                 }
             }, 250);
+            if (monsterInterval) clearInterval(monsterInterval);
+            monsterInterval = setInterval(moveMonsters, 500);
         }
 
         function draw() {
@@ -202,14 +213,56 @@
             ctx.arc(ppx - cellSize * 0.12, ppy - cellSize * 0.05, cellSize * 0.06, 0, Math.PI * 2);
             ctx.arc(ppx + cellSize * 0.12, ppy - cellSize * 0.05, cellSize * 0.06, 0, Math.PI * 2);
             ctx.fill();
+
+            // Canavarlar
+            for (const m of monsters) {
+                const mx = m.x * cellSize + cellSize / 2;
+                const my = m.y * cellSize + cellSize / 2;
+                const r = cellSize / 2.6;
+                ctx.fillStyle = "#e63946";
+                ctx.beginPath();
+                ctx.arc(mx, my - cellSize * 0.05, r, Math.PI, 0);
+                ctx.lineTo(mx + r, my + r * 0.8);
+                ctx.lineTo(mx + r * 0.5, my + r * 0.5);
+                ctx.lineTo(mx, my + r * 0.8);
+                ctx.lineTo(mx - r * 0.5, my + r * 0.5);
+                ctx.lineTo(mx - r, my + r * 0.8);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#fff";
+                ctx.beginPath();
+                ctx.arc(mx - cellSize * 0.13, my - cellSize * 0.05, cellSize * 0.1, 0, Math.PI * 2);
+                ctx.arc(mx + cellSize * 0.13, my - cellSize * 0.05, cellSize * 0.1, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#000";
+                ctx.beginPath();
+                ctx.arc(mx - cellSize * 0.13, my - cellSize * 0.05, cellSize * 0.05, 0, Math.PI * 2);
+                ctx.arc(mx + cellSize * 0.13, my - cellSize * 0.05, cellSize * 0.05, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
 
         function isWall(x, y) {
             return y < 0 || y >= maze.length || x < 0 || x >= maze[0].length || maze[y][x] === "#";
         }
 
+        function monsterAt(x, y) {
+            return monsters.some(m => m.x === x && m.y === y);
+        }
+
+        function handleCaught() {
+            if (lost || won) return;
+            lost = true;
+            messageEl.style.color = "#ff6b6b";
+            messageEl.textContent = "👻 Yakalandın! Seviye yenileniyor...";
+            clearInterval(monsterInterval);
+            clearInterval(timerInterval);
+            draw();
+            setTimeout(() => loadLevel(currentLevel), 1500);
+        }
+
         function tryMove(dx, dy) {
-            if (won) return;
+            if (won || lost) return;
             let moved = false;
             while (true) {
                 const nx = player.x + dx;
@@ -219,11 +272,17 @@
                 player.y = ny;
                 moves++;
                 moved = true;
+                if (monsterAt(player.x, player.y)) {
+                    movesEl.textContent = moves;
+                    handleCaught();
+                    return;
+                }
                 if (player.x === goal.x && player.y === goal.y) {
                     won = true;
                     const secs = Math.floor((Date.now() - startTime) / 1000);
                     messageEl.textContent = `🎉 Kazandın! ${moves} hamle, ${secs} saniye.`;
                     clearInterval(timerInterval);
+                    clearInterval(monsterInterval);
                     break;
                 }
                 const side1Open = !isWall(player.x + (-dy), player.y + dx);
@@ -234,6 +293,40 @@
                 movesEl.textContent = moves;
                 draw();
             }
+        }
+
+        function moveMonsters() {
+            if (won || lost) return;
+            const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+            for (const m of monsters) {
+                let options = [];
+                for (const [dx, dy] of dirs) {
+                    if (!isWall(m.x + dx, m.y + dy)) options.push({ dx, dy });
+                }
+                if (options.length === 0) continue;
+                const nonReverse = options.filter(o => !(o.dx === -m.dx && o.dy === -m.dy));
+                if (nonReverse.length > 0) options = nonReverse;
+                let chosen;
+                if (Math.random() < 0.45) {
+                    options.sort((a, b) => {
+                        const da = Math.abs(m.x + a.dx - player.x) + Math.abs(m.y + a.dy - player.y);
+                        const db = Math.abs(m.x + b.dx - player.x) + Math.abs(m.y + b.dy - player.y);
+                        return da - db;
+                    });
+                    chosen = options[0];
+                } else {
+                    chosen = options[Math.floor(Math.random() * options.length)];
+                }
+                m.x += chosen.dx;
+                m.y += chosen.dy;
+                m.dx = chosen.dx;
+                m.dy = chosen.dy;
+                if (m.x === player.x && m.y === player.y) {
+                    handleCaught();
+                    return;
+                }
+            }
+            draw();
         }
 
         document.addEventListener("keydown", e => {
